@@ -138,6 +138,11 @@ MODULE elmer_ebfm_coupling
   INTEGER, PARAMETER :: surface_height_collection_size = 1
   DOUBLE PRECISION, PUBLIC, ALLOCATABLE :: surface_height_field(:,:)
 
+  INTEGER :: ice_thickness_field_id = -1
+  CHARACTER(LEN=*), PARAMETER :: ice_thickness_field_name = "ice_thickness"
+  INTEGER, PARAMETER :: ice_thickness_collection_size = 1
+  DOUBLE PRECISION, PUBLIC, ALLOCATABLE :: ice_thickness_field(:,:)
+
 CONTAINS
 
   SUBROUTINE construct_elmer_ebfm_coupling( &
@@ -189,6 +194,16 @@ CONTAINS
     ALLOCATE(surface_height_field(nbr_vertices, surface_height_collection_size))
     surface_height_field = 42.0
 
+    ! register ice_thickness field in YAC (Elmer -> EBFM = SOURCE, vertex/nodal)
+    CALL yac_fdef_field( &
+      ice_thickness_field_name, comp_id, (/corner_point_id/), 1, &
+      ice_thickness_collection_size, iso8601_timestep, &
+      YAC_TIME_UNIT_ISO_FORMAT, ice_thickness_field_id)
+
+    ! allocate and initialise ice_thickness field buffer
+    ALLOCATE(ice_thickness_field(nbr_vertices, ice_thickness_collection_size))
+    ice_thickness_field = 0.0_dp
+
   END SUBROUTINE construct_elmer_ebfm_coupling
 
   SUBROUTINE construct_elmer_ebfm_coupling_post_sync( &
@@ -207,6 +222,7 @@ CONTAINS
     CALL print_field_info(elmer_comp_name, elmer_grid_name, smb_field_name)
     CALL print_field_info(elmer_comp_name, elmer_grid_name, runoff_field_name)
     CALL print_field_info(elmer_comp_name, elmer_grid_name, surface_height_field_name)
+    CALL print_field_info(elmer_comp_name, elmer_grid_name, ice_thickness_field_name)
 
   CONTAINS
 
@@ -416,12 +432,44 @@ CONTAINS
       END IF
     END IF
 
+    ! checks whether the ice thickness field is defined as a source in a couple
+    IF (yac_fget_role_from_field_id(ice_thickness_field_id) == YAC_EXCHANGE_TYPE_SOURCE) THEN
+
+      CALL yac_fget_action(ice_thickness_field_id, info)
+
+      IF (is_root_rank) THEN
+
+        ! get the action executed by YAC in the next put operation called for
+        ! the ice_thickness field and print out some information
+        PRINT *, "ELMER: call put for field: ", TRIM(ice_thickness_field_name), &
+                 " datatime: ", TRIM(yac_fget_field_datetime(ice_thickness_field_id)), &
+                 " action: ", TRIM(yac_action_to_string(info))
+      END IF
+
+      ! if this was a coupling timestep
+      IF ((info == YAC_ACTION_COUPLING) .OR. &
+          (info == YAC_ACTION_PUT_FOR_RESTART) .OR. &
+          (info == YAC_ACTION_REDUCTION)) THEN
+
+        ! execute put operation for ice_thickness field
+        ! * if this is a coupling timestep, this will block until the data has
+        !   been received
+        ! * if this is not a coupling timestep, ice_thickness field buffer
+        !   is left untouched and routine will return immediately
+        CALL yac_fput( &
+          ice_thickness_field_id, SIZE(ice_thickness_field, 1), SIZE(ice_thickness_field, 2), &
+          ice_thickness_field, info, err)
+      ELSE IF (info == YAC_ACTION_NONE) THEN
+        CALL yac_fupdate(ice_thickness_field_id)
+      END IF
+    END IF
+
   END SUBROUTINE elmer_ebfm_interface
 
   SUBROUTINE destruct_elmer_ebfm_coupling()
 
     ! clean up
-    DEALLOCATE(t_ice_field, smb_field, runoff_field, surface_height_field)
+    DEALLOCATE(t_ice_field, smb_field, runoff_field, surface_height_field, ice_thickness_field)
 
   END SUBROUTINE destruct_elmer_ebfm_coupling
 

@@ -229,6 +229,14 @@ SUBROUTINE setup_ebfm_variables(Model, Solver, Mesh, UnFoundFatal)
     surface_height_field(i,1) = ZsSol % Values(ZsSol % Perm(i))
   END DO
 
+  ! get ice thickness from Elmer for the first time step
+  ice_thickness_var => VariableGet( Model % Mesh % Variables, "H" ,UnFoundFatal=.FALSE.)
+  IF (ASSOCIATED(ice_thickness_var)) THEN
+    DO i=1, Mesh % NumberOfNodes
+      ice_thickness_field(i,1) = ice_thickness_var % Values(ice_thickness_var % Perm(i))
+    END DO
+  END IF
+
 END SUBROUTINE setup_ebfm_variables
 
 !> Couple Elmer -> ICON-O: send flux fields, run interface, retrieve ocean fields
@@ -316,7 +324,8 @@ SUBROUTINE update_and_exchange_ebfm_variables(Model, Solver, Mesh, is_root_rank,
   USE DefUtils, ONLY: GetNOFActive, VariableGet
   USE Messages, ONLY: INFO, FATAL
   USE elmer_ebfm_coupling, ONLY: elmer_ebfm_interface, t_ice_field, smb_field, &
-                                 runoff_field, surface_height_field
+                                 runoff_field, surface_height_field, &
+                                 ice_thickness_field
 
   IMPLICIT NONE
 
@@ -327,7 +336,7 @@ SUBROUTINE update_and_exchange_ebfm_variables(Model, Solver, Mesh, is_root_rank,
   LOGICAL, INTENT(IN) :: UnFoundFatal
 
   CHARACTER(LEN=1024), PARAMETER :: SolverName='update_and_exchange_ebfm_variables'
-  TYPE(Variable_t), POINTER :: t_iceVar, smbVar, runoffVar, ZsSol
+  TYPE(Variable_t), POINTER :: t_iceVar, smbVar, runoffVar, ZsSol, ice_thickness_var
   INTEGER :: i, t
 
   CALL INFO(SolverName, 'Starting coupling Elmer -> EBFM', Level=3)
@@ -339,6 +348,7 @@ SUBROUTINE update_and_exchange_ebfm_variables(Model, Solver, Mesh, is_root_rank,
   smbVar => VariableGet( Mesh % Variables, 'smb' )
   runoffVar => VariableGet( Mesh % Variables, 'runoff' )
   ZsSol => VariableGet( Model % Mesh % Variables, "Zs" ,UnFoundFatal=UnFoundFatal)
+  ice_thickness_var => VariableGet( Model % Mesh % Variables, "H" ,UnFoundFatal=.FALSE.)
   IF ((.NOT.ASSOCIATED(t_iceVar)) .OR. (.NOT.ASSOCIATED(smbVar)) .OR. (.NOT.ASSOCIATED(runoffVar))) THEN
     CALL FATAL(SolverName,'Elmer variables not associated')
   END IF
@@ -367,6 +377,9 @@ SUBROUTINE update_and_exchange_ebfm_variables(Model, Solver, Mesh, is_root_rank,
   DO i=1, Mesh % NumberOfNodes
     t_iceVar % Values(t_iceVar % Perm(i)) = t_ice_field(i,1)
     surface_height_field(i,1) = ZsSol % Values(ZsSol % Perm(i))
+    IF (ASSOCIATED(ice_thickness_var)) THEN
+      ice_thickness_field(i,1) = ice_thickness_var % Values(ice_thickness_var % Perm(i))
+    END IF
   END DO
   CALL INFO(SolverName, 'Writing cell variables....', Level=30)
   ! write over values for elements
