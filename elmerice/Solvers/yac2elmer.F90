@@ -186,7 +186,7 @@ END SUBROUTINE setup_icon_variables
 SUBROUTINE setup_ebfm_variables(Model, Solver, Mesh, UnFoundFatal)
   USE Types, ONLY: Model_t, Solver_t, Mesh_t, Variable_t, dp
   USE DefUtils, ONLY: DefaultVariableAdd, GetNOFActive, VariableGet, variable_on_elements
-  USE elmer_ebfm_coupling, ONLY: surface_height_field
+  USE elmer_ebfm_coupling, ONLY: surface_height_field, ice_thickness_field
 
   IMPLICIT NONE
 
@@ -196,7 +196,7 @@ SUBROUTINE setup_ebfm_variables(Model, Solver, Mesh, UnFoundFatal)
   LOGICAL, INTENT(IN) :: UnFoundFatal
 
   INTEGER, POINTER :: t_icePerm(:), smbPerm(:), runoffPerm(:)
-  TYPE(Variable_t), POINTER :: ZsSol
+  TYPE(Variable_t), POINTER :: ZsSol, ice_thickness_var
   INTEGER :: i, t
 
   ! setting up Elmer-side variables for receiving YAC variables
@@ -223,19 +223,13 @@ SUBROUTINE setup_ebfm_variables(Model, Solver, Mesh, UnFoundFatal)
   CALL DefaultVariableAdd('smb', dofs=1, VariableType = Variable_on_elements, Perm = smbPerm)
   CALL DefaultVariableAdd('runoff', dofs=1, VariableType = Variable_on_elements, Perm = runoffPerm)
 
-  ! get surface elevation from Elmer for the first time step
+  ! get surface elevation and ice thickness from Elmer for the first time step
   ZsSol => VariableGet( Model % Mesh % Variables, "Zs" ,UnFoundFatal=UnFoundFatal)
+  ice_thickness_var => VariableGet( Model % Mesh % Variables, "H" ,UnFoundFatal=.FALSE.)
   DO i=1, Mesh % NumberOfNodes
     surface_height_field(i,1) = ZsSol % Values(ZsSol % Perm(i))
+    ice_thickness_field(i,1) = ice_thickness_var % Values(ice_thickness_var % Perm(i))
   END DO
-
-  ! get ice thickness from Elmer for the first time step
-  ice_thickness_var => VariableGet( Model % Mesh % Variables, "H" ,UnFoundFatal=.FALSE.)
-  IF (ASSOCIATED(ice_thickness_var)) THEN
-    DO i=1, Mesh % NumberOfNodes
-      ice_thickness_field(i,1) = ice_thickness_var % Values(ice_thickness_var % Perm(i))
-    END DO
-  END IF
 
 END SUBROUTINE setup_ebfm_variables
 

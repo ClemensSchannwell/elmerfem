@@ -202,7 +202,7 @@ CONTAINS
 
     ! allocate and initialise ice_thickness field buffer
     ALLOCATE(ice_thickness_field(nbr_vertices, ice_thickness_collection_size))
-    ice_thickness_field = 0.0_dp
+    ice_thickness_field = 0.0
 
   END SUBROUTINE construct_elmer_ebfm_coupling
 
